@@ -1,0 +1,8 @@
+{
+  "name": "invoice-generator-site",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.650.0",
+    "google-auth-library": "^9.14.0"
+  }
+}

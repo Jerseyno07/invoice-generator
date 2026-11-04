@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GST Invoice Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #d9dce1;
+    --text: #1d2330;
+    --muted: #666f7a;
+    --accent: #2f5d3a;
+    --danger: #c0392b;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161a; --panel: #1d2026; --border: #30343c; --text: #e8eaed; --muted: #9aa2ab;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] { --bg: #14161a; --panel: #1d2026; --border: #30343c; --text: #e8eaed; --muted: #9aa2ab; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  body { padding-inline: 16px; padding-block: 20px; }
+  .wrap { max-width: 1100px; margin: 0 auto; min-width: 0; }
+  h1 { font-size: 20px; margin: 4px 0 2px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+  label { display: block; font-size: 12.5px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--bg); color: var(--text); font-size: 14px; font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 44px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  @media (max-width: 560px) { .row2, .row3 { grid-template-columns: 1fr; } }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 8px;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn.secondary { background: transparent; color: var(--accent); }
+  .btn.ghost { background: transparent; color: var(--muted); border-color: var(--border); font-weight: 500; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .dropzone { border: 2px dashed var(--border); border-radius: 10px; padding: 20px; text-align: center;
+    color: var(--muted); font-size: 13.5px; cursor: pointer; transition: border-color .15s; }
+  .dropzone.drag { border-color: var(--accent); color: var(--accent); }
+  .csv-status { font-size: 13px; margin-top: 8px; }
+  .csv-status.ok { color: #1a7f37; }
+  .csv-status.err { color: var(--danger); }
+  .group-summary table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+  .group-summary th, .group-summary td { border: 1px solid var(--border); padding: 5px 7px; text-align: left; }
+  .group-summary th { background: rgba(127,127,127,0.08); }
+  .group-summary tr.sel { background: rgba(47,93,58,0.1); }
+  .group-summary td.amt, .group-summary th.amt { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---- Invoice preview / print area ---- */
+  #invoiceOutput { display: none; margin-top: 18px; }
+  .invoice-sheet {
+    background: #fff; color: #111; width: 100%; max-width: 900px; margin: 0 auto 18px;
+    padding: 28px 30px; border-radius: 6px; border: 1px solid var(--border); font-size: 12.5px;
+  }
+  .inv-top { display: flex; justify-content: space-between; gap: 20px; }
+  .inv-seller { max-width: 48%; }
+  .inv-seller .name { font-size: 20px; font-weight: 800; margin-bottom: 2px; letter-spacing: -0.01em; }
+  .inv-seller .company { font-weight: 700; font-size: 12.5px; margin-top: 4px; }
+  .inv-seller .addr { font-size: 11.5px; color: #333; line-height: 1.45; }
+  .inv-seller .ids { margin-top: 6px; font-size: 11.5px; line-height: 1.5; }
+  .inv-right { display: flex; flex-direction: column; align-items: flex-end; text-align: right; max-width: 48%; }
+  .inv-qr { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; margin-bottom: 10px; }
+  .inv-qr canvas, .inv-qr img { display: block; }
+  .inv-qr .qr-label { font-size: 9px; color: #555; text-align: right; }
+  .inv-party { margin-bottom: 8px; font-size: 11.5px; line-height: 1.45; }
+  .inv-party h4 { margin: 0 0 2px; font-size: 12px; font-weight: 700; color: #111; }
+  .inv-title { text-align: center; font-size: 18px; font-weight: 800; margin: 14px 0 14px; }
+  table.items { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 10px; }
+  table.items th, table.items td { border: 1px solid #333; padding: 5px 6px; }
+  table.items th { background: #eceff1; font-weight: 700; font-size: 10px; text-transform: uppercase; }
+  table.items td.num, table.items th.num { text-align: right; }
+  .totals { width: 320px; margin-left: auto; font-size: 12.5px; }
+  .totals div { display: flex; justify-content: space-between; padding: 3px 0; }
+  .totals .strong { font-weight: 700; border-top: 1px solid #111; }
+  .totals .grand { font-weight: 800; border-top: 2px solid #111; margin-top: 4px; padding-top: 6px; font-size: 13.5px; color: var(--accent); }
+  .inv-footer { display: flex; justify-content: space-between; margin-top: 26px; font-size: 11.5px; }
+  .inv-footer .terms { max-width: 60%; color: #333; }
+  .signatory { text-align: right; }
+  .signatory .line { margin-top: 36px; border-top: 1px solid #333; padding-top: 4px; }
+  .computer-gen { text-align: center; margin-top: 18px; font-style: italic; color: #444; font-size: 11px; }
+
+  @media (max-width: 720px) {
+    .inv-top { flex-direction: column; }
+    .inv-right { align-items: flex-start; text-align: left; max-width: 100%; }
+    .inv-qr { align-items: flex-start; }
+  }
+
+  @media print {
+    body * { visibility: hidden; }
+    #invoiceOutput, #invoiceOutput * { visibility: visible; }
+    #invoiceOutput { position: absolute; top: 0; left: 0; width: 100%; }
+    .invoice-sheet { border: none; box-shadow: none; width: 100%; max-width: none; margin: 0; page-break-after: always; }
+    .invoice-sheet:last-child { page-break-after: auto; }
+    @page { margin: 12mm; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>GST Invoice Generator</h1>
+  <div class="sub">Upload a CSV of order lines — it's grouped into one invoice per customer and rendered in your standard tax-invoice format, each with a QR code encoding its invoice ID.</div>
+
+  <!-- SELLER (editable, saved on this device) -->
+  <div class="panel">
+    <h2>Seller</h2>
+    <label>Brand / Wordmark</label>
+    <input type="text" id="sellerWord" value="ninjacart">
+    <label>Company Name</label>
+    <input type="text" id="sellerCompany" value="63 IDEAS INFOLABS PVT LTD">
+    <div class="row2">
+      <div><label>Address Line 1</label><input type="text" id="sellerAddr1" value="Helios Business Park, E-Block, 2nd Floor,"></div>
+      <div><label>Address Line 2</label><input type="text" id="sellerAddr2" value="Kadabeesanahalli, Karnataka - 560103."></div>
+    </div>
+    <div class="row2">
+      <div><label>GSTIN</label><input type="text" id="sellerGstin" value="33AAACZ8597L1ZJ"></div>
+      <div><label>FSSAI (optional)</label><input type="text" id="sellerFssai" value="12426003000511"></div>
+    </div>
+    <label>Warehouse / Dispatch Address</label>
+    <input type="text" id="sellerWarehouse" value="Sri Lakshmi warehouse, Manikandam, Trichy 620012">
+    <label>Invoice Number Prefix</label>
+    <input type="text" id="invPrefix" value="NJC" style="max-width:160px">
+    <div class="hint">Saved on this device, so you won't need to retype it next time.</div>
+  </div>
+
+  <!-- CSV UPLOAD -->
+  <div class="panel">
+    <h2>Customers &amp; Line Items — Upload CSV</h2>
+    <div class="dropzone" id="dropzone">
+      <div id="dropzoneLabel">Click to choose a CSV file, or drag one here</div>
+    </div>
+    <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
+    <div class="hint">
+      One row per line item. Rows are grouped into one invoice per unique combination of
+      <b>ShipToAddress, BilledToAddress, GSTIN, PONUmber</b> and <b>Date</b> — the same columns your export uses.<br>
+      Required: <b>BilledToAddress, skuName, Qty, Rate</b> (Qty from BilledQuantity/SkuQuantity/FulfilledQuantity, Rate from invoiceSalePrice/sodSalePrice).<br>
+      Optional: <b>ShipToAddress, GSTIN, PONUmber, Date, InvoiceId, FSNCode, UOM, HSNCode, SubLineTotal, Tax, TaxAmount, FSSAI</b>.<br>
+      When <b>InvoiceId</b> is present, rows are grouped by it directly and that ID is printed on the invoice and encoded in its QR. The item table prints <b>FSNCode</b> (not SkuId), and when a row carries <b>FSSAI</b> it's shown on the seller side, overriding the field above for that invoice.
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="downloadSampleBtn" type="button">Download sample CSV</button>
+    </div>
+    <div id="csvStatus" class="csv-status"></div>
+    <div id="groupSummaryWrap"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" id="generateBtn" type="button" disabled>Generate All Invoices</button>
+    <button class="btn secondary" id="printBtn" type="button" style="display:none">Print / Save as PDF (all invoices)</button>
+    <button class="btn secondary" id="downloadAllBtn" type="button" style="display:none">Download All as PDFs + Upload Links to Sheet</button>
+  </div>
+  <div id="downloadAllStatus" class="csv-status"></div>
+
+  <div id="invoiceOutput"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = id => document.getElementById(id);
+
+  // ---- Seller (editable, persisted to this device) ----
+  const SELLER_FIELDS = ['sellerWord','sellerCompany','sellerAddr1','sellerAddr2','sellerGstin','sellerFssai','sellerWarehouse','invPrefix'];
+  function loadSeller() {
+    try { SELLER_FIELDS.forEach(id => { const v = localStorage.getItem('inv_' + id); if (v !== null) $(id).value = v; }); }
+    catch (e) {}
+  }
+  function saveSeller() {
+    try { SELLER_FIELDS.forEach(id => localStorage.setItem('inv_' + id, $(id).value)); } catch (e) {}
+  }
+  SELLER_FIELDS.forEach(id => $(id).addEventListener('change', saveSeller));
+  loadSeller();
+
+  function buildSellerObj() {
+    return {
+      word: $('sellerWord').value.trim() || 'Your Brand',
+      company: $('sellerCompany').value.trim(),
+      addr1: $('sellerAddr1').value.trim(),
+      addr2: $('sellerAddr2').value.trim(),
+      gstin: $('sellerGstin').value.trim(),
+      fssai: $('sellerFssai').value.trim(),
+      warehouse: $('sellerWarehouse').value.trim(),
+      prefix: ($('invPrefix').value.trim() || 'INV').toUpperCase()
+    };
+  }
+
+  // ---- CSV parsing (handles quoted fields, embedded commas, "" escapes) ----
+  function parseCsv(text) {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i], next = text[i+1];
+      if (inQuotes) {
+        if (c === '"' && next === '"') { field += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else { field += c; }
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+        else field += c;
+      }
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    return rows.filter(r => r.some(c => String(c).trim() !== ''));
+  }
+  function normHeader(h) { return String(h || '').trim().toLowerCase().replace(/[^a-z0-9]/g, ''); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+  // Manual Indian digit-grouping (lakh/crore) formatter. toLocaleString('en-IN', {...})
+  // is correct but ~40x slower when called per table cell across thousands of rows —
+  // this produces byte-identical output without the Intl overhead.
+  function money(n) {
+    n = round2(n);
+    const neg = n < 0;
+    const fixed = (neg ? -n : n).toFixed(2);
+    const dot = fixed.indexOf('.');
+    const dec = fixed.slice(dot + 1);
+    let intPart = fixed.slice(0, dot);
+    let out;
+    if (intPart.length <= 3) {
+      out = intPart;
+    } else {
+      const last3 = intPart.slice(-3);
+      let rest = intPart.slice(0, -3);
+      let grouped = '';
+      while (rest.length > 2) { grouped = ',' + rest.slice(-2) + grouped; rest = rest.slice(0, -2); }
+      out = rest + grouped + ',' + last3;
+    }
+    return (neg ? '-' : '') + out + '.' + dec;
+  }
+  function cleanAddr(s) {
+    if (!s) return '';
+    s = String(s).trim();
+    while (s.length >= 2 && s[0] === '"' && s[s.length - 1] === '"') s = s.slice(1, -1).trim();
+    return s;
+  }
+  function num(v, fallback) {
+    const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? (fallback || 0) : n;
+  }
+  function fmtDate(v) {
+    if (!v) return '-';
+    // accept dd-mm-yyyy (the export's own format) as well as yyyy-mm-dd
+    let d;
+    const dm = /^(\d{2})-(\d{2})-(\d{4})$/.exec(v.trim());
+    if (dm) d = new Date(+dm[3], +dm[2]-1, +dm[1]);
+    else d = new Date(v.length <= 10 ? v + 'T00:00:00' : v);
+    if (isNaN(d)) return v;
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+  }
+
+  // CSV header -> internal field, matching the WMS export's own column names (case/space-insensitive)
+  const HEADER_MAP = {
+    shiptoaddress: 'shipTo', billedtoaddress: 'billTo', gstin: 'gstin',
+    ponumber: 'po', date: 'date', invoiceid: 'invoiceId', id: 'rowId',
+    fsncode: 'itemCode', skuid: 'itemCode', uom: 'uom',
+    skuname: 'name', fulfilledquantity: 'qtyFulfilled', billedquantity: 'qtyBilled',
+    sodsaleprice: 'rateSod', lotweightid: 'lotWeightId', invoicedetailid: 'invoiceDetailId',
+    invoicesaleprice: 'rateInvoice', skuquantity: 'qtySku', sublinetotal: 'subLineTotal',
+    mrp: 'mrp', taxtype: 'taxType', tax: 'taxPct', taxamount: 'taxAmount',
+    hsncode: 'hsn', fssai: 'fssai'
+  };
+
+  let groups = []; // one entry per invoice, built from the uploaded CSV
+
+  $('dropzone').addEventListener('click', () => $('csvFile').click());
+  $('csvFile').addEventListener('change', e => handleFile(e.target.files[0]));
+  ['dragover','dragenter'].forEach(evt => $('dropzone').addEventListener(evt, e => { e.preventDefault(); $('dropzone').classList.add('drag'); }));
+  ['dragleave','drop'].forEach(evt => $('dropzone').addEventListener(evt, e => { e.preventDefault(); $('dropzone').classList.remove('drag'); }));
+  $('dropzone').addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) handleFile(f); });
+
+  function handleFile(f) {
+    if (!f) return;
+    $('dropzoneLabel').textContent = f.name;
+    const reader = new FileReader();
+    reader.onload = ev => handleCsv(String(ev.target.result), f.name);
+    reader.onerror = () => { $('csvStatus').textContent = 'Could not read the file.'; $('csvStatus').className = 'csv-status err'; };
+    reader.readAsText(f);
+  }
+
+  function handleCsv(text, filenameLabel) {
+    try {
+      const rows = parseCsv(text);
+      if (rows.length < 2) throw new Error('CSV needs a header row plus at least one data row.');
+      const headers = rows[0].map(normHeader);
+      const mapped = headers.map(h => HEADER_MAP[h] || null);
+      if (!mapped.includes('billTo') || !mapped.includes('name')) {
+        throw new Error('CSV must include at least BilledToAddress and skuName columns.');
+      }
+      const groupsMap = new Map();
+      const order = [];
+      for (let r = 1; r < rows.length; r++) {
+        const cells = rows[r];
+        const rec = {};
+        // When a CSV has two columns that map to the same field (e.g. both
+        // "HSNCode" and "HsnCode"), the first non-empty value wins instead
+        // of a later blank duplicate silently wiping it out.
+        mapped.forEach((key, idx) => {
+          if (!key) return;
+          const val = cells[idx] !== undefined ? cells[idx].trim() : '';
+          if (rec[key] === undefined || rec[key] === '') rec[key] = val;
+        });
+        const shipTo = cleanAddr(rec.shipTo);
+        const billTo = cleanAddr(rec.billTo);
+        if (!billTo && !shipTo) continue;
+        if (!rec.name) continue;
+
+        const invoiceId = (rec.invoiceId || '').trim();
+        const groupKey = invoiceId ? ('INVID:' + invoiceId) : [shipTo, billTo, rec.gstin || '', rec.po || '', rec.date || ''].join('||');
+        if (!groupsMap.has(groupKey)) {
+          groupsMap.set(groupKey, {
+            shipTo, billTo, gstin: rec.gstin || '', po: rec.po || '', date: rec.date || '',
+            invoiceId, invoiceFssai: rec.fssai || '', items: []
+          });
+          order.push(groupKey);
+        }
+        const g = groupsMap.get(groupKey);
+        if (!g.invoiceFssai && rec.fssai) g.invoiceFssai = rec.fssai;
+
+        const qty = num(rec.qtyBilled) || num(rec.qtySku) || num(rec.qtyFulfilled);
+        const rate = num(rec.rateInvoice) || num(rec.rateSod);
+        let taxable = num(rec.subLineTotal);
+        if (!taxable && qty && rate) taxable = qty * rate;
+        const taxAmount = num(rec.taxAmount);
+        const taxPctTotal = num(rec.taxPct);
+
+        g.items.push({
+          name: rec.name, itemCode: rec.itemCode || '', hsn: rec.hsn || '8081000', uom: rec.uom || '-',
+          qty, rate, taxable, taxPctTotal, taxAmount
+        });
+      }
+      groups = order.map(k => groupsMap.get(k));
+      if (!groups.length) throw new Error('No valid rows found — check BilledToAddress and skuName are present.');
+
+      const totalItems = groups.reduce((s, g) => s + g.items.length, 0);
+      $('csvStatus').textContent = `Loaded ${groups.length} invoice(s), ${totalItems} line item row(s) from ${filenameLabel}.`;
+      $('csvStatus').className = 'csv-status ok';
+      $('generateBtn').disabled = false;
+      renderGroupSummary();
+    } catch (err) {
+      groups = [];
+      $('generateBtn').disabled = true;
+      $('csvStatus').textContent = 'Could not read CSV: ' + err.message;
+      $('csvStatus').className = 'csv-status err';
+      $('groupSummaryWrap').innerHTML = '';
+    }
+  }
+
+  function buyerName(g) {
+    const raw = g.billTo || g.shipTo || 'Unnamed buyer';
+    return raw.split(',')[0].trim() || raw;
+  }
+
+  function renderGroupSummary() {
+    let html = '<div class="group-summary"><table><thead><tr><th>#</th><th>Customer</th><th>Invoice ID</th><th>PO</th><th>Date</th><th>Line Items</th><th class="amt">Taxable Value</th></tr></thead><tbody>';
+    groups.forEach((g, i) => {
+      const sub = g.items.reduce((s, it) => s + it.taxable, 0);
+      html += `<tr><td>${i+1}</td><td>${esc(buyerName(g))}</td><td>${esc(g.invoiceId || '(auto)')}</td><td>${esc(g.po || '-')}</td><td>${esc(fmtDate(g.date))}</td><td>${g.items.length}</td><td class="amt">${money(sub)}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    $('groupSummaryWrap').innerHTML = html;
+  }
+
+  $('downloadSampleBtn').addEventListener('click', () => downloadCsv(
+    'ShipToAddress,BilledToAddress,GSTIN,PONUmber,Date,InvoiceId,skuName,UOM,FSNCode,HSNCode,BilledQuantity,invoiceSalePrice,SubLineTotal,Tax,TaxAmount,FSSAI\n' +
+    '"12 MG Road, Bengaluru, Karnataka 560001","Acme Retail Pvt Ltd, 12 MG Road, Bengaluru, Karnataka 560001",29AACZ1234A1Z5,PO7781,07-10-2026,36780404,Onion spring (H&R),1 Kg,VEGG5KYTHGMEVPNE,8081000,10,45,450,5,22.5,12424023000633\n' +
+    '"12 MG Road, Bengaluru, Karnataka 560001","Acme Retail Pvt Ltd, 12 MG Road, Bengaluru, Karnataka 560001",29AACZ1234A1Z5,PO7781,07-10-2026,36780404,Spinach W/O Roots (H&R),500 g,VEGFTARFZH2GEGVF,8081000,5,40,200,5,10,12424023000633\n' +
+    '"45 Gautam Marg, Jaipur, Rajasthan 302019","Sunrise Traders, 45 Gautam Marg, Jaipur, Rajasthan 302019",08AAXCS0655F1ZY,PO7782,07-10-2026,36780511,Mosambi (Sweet lime) (H&R),250 g,VEGFF2SAM3TZRU6H,8081000,8,51.10,408.80,5,20.44,12424023000633\n',
+    'sample_invoice_lines.csv'
+  ));
+
+  function downloadCsv(text, filename) {
+    const blob = new Blob([text], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  let currentInvoices = [];
+  let invoiceCounter = 1;
+  function nextInvoiceNumber(prefix) { return prefix + String(invoiceCounter++).padStart(6, '0'); }
+
+  function computeInvoice(items) {
+    let taxable = 0, cgst = 0, sgst = 0, totalQty = 0;
+    const rows = items.map((it, idx) => {
+      const sgstPct = it.taxPctTotal ? it.taxPctTotal / 2 : 0;
+      const cgstPct = sgstPct;
+      const sgstVal = it.taxAmount ? it.taxAmount / 2 : 0;
+      const cgstVal = sgstVal;
+      const net = it.taxable + it.taxAmount;
+      taxable += it.taxable; totalQty += it.qty; cgst += cgstVal; sgst += sgstVal;
+      return { sno: idx + 1, ...it, sgstPct, cgstPct, sgstVal, cgstVal, net };
+    });
+    const totalGst = cgst + sgst;
+    return { rows, taxable, cgst, sgst, totalGst, totalQty, grandTotal: taxable + totalGst };
+  }
+
+  function renderInvoiceHtml(seller, g, invNumber, calc, qrDomId) {
+    const itemRowsHtml = calc.rows.map(r => `<tr>
+        <td>${r.sno}</td><td>${esc(r.name)}</td><td class="num">${esc(r.itemCode)}</td><td class="num">${esc(r.hsn)}</td>
+        <td>${esc(r.uom)}</td>
+        <td class="num">${r.qty}</td><td class="num">${money(r.rate)}</td><td class="num">${money(r.taxable)}</td>
+        <td class="num">${round2(r.sgstPct)}</td><td class="num">${round2(r.cgstPct)}</td>
+        <td class="num">${money(r.sgstVal)}</td><td class="num">${money(r.cgstVal)}</td><td class="num">${money(r.net)}</td>
+      </tr>`
+    ).join('');
+
+    return `
+      <div class="invoice-sheet">
+        <div class="inv-top">
+          <div class="inv-seller">
+            <div class="name">${esc(seller.word)}</div>
+            ${seller.company ? `<div class="company">${esc(seller.company)}</div>` : ''}
+            <div class="addr">${esc(seller.addr1)}${seller.addr1 ? '<br>' : ''}${esc(seller.addr2)}</div>
+            <div class="ids">
+              <b>GSTIN:</b> ${esc(seller.gstin || '-')}<br>
+              ${(g.invoiceFssai || seller.fssai) ? `<b>FSSAI:</b> ${esc(g.invoiceFssai || seller.fssai)}<br>` : ''}
+              <b>PO Number:</b> ${esc(g.po || '-')}<br>
+              <b>Invoice Number:</b> ${esc(invNumber)}<br>
+              <b>Date Of Invoice:</b> ${fmtDate(g.date)}<br>
+              ${seller.warehouse ? `<b>Warehouse Address:</b> ${esc(seller.warehouse)}` : ''}
+            </div>
+          </div>
+          <div class="inv-right">
+            <div class="inv-qr">
+              <div id="${qrDomId}"></div>
+              <div class="qr-label">${esc(invNumber)}</div>
+            </div>
+            <div class="inv-party">
+              <h4>Ship To:</h4>
+              <div>${esc(g.shipTo || g.billTo || '-')}</div>
+            </div>
+            <div class="inv-party">
+              <h4>Bill To:</h4>
+              <div>${esc(g.billTo || '-')}</div>
+            </div>
+            <div class="inv-party">
+              <div><b>Delivery Date:</b> ${fmtDate(g.date)}</div>
+              <div><b>GSTIN:</b> ${esc(g.gstin || '-')}</div>
+            </div>
+          </div>
+        </div>
+        <div class="inv-title">Tax Invoice / Bill of Supply</div>
+        <table class="items">
+          <thead><tr>
+            <th>S.No</th><th>Name</th><th class="num">FSN Code</th><th class="num">HSN Code</th><th>UOM</th>
+            <th class="num">Qty</th><th class="num">Rate / unit</th><th class="num">Taxable Value</th>
+            <th class="num">SGST %</th><th class="num">CGST %</th><th class="num">SGST Value</th>
+            <th class="num">CGST Value</th><th class="num">Net Value</th>
+          </tr></thead>
+          <tbody>${itemRowsHtml}</tbody>
+        </table>
+        <div class="totals">
+          <div><span>Sub-Total</span><span>${money(calc.taxable)}</span></div>
+          <div><span>Delivery Charges</span><span>0.00</span></div>
+          <div class="strong"><span>Total Qty</span><span>${calc.totalQty}</span></div>
+          <div><span>Discount</span><span>0.00</span></div>
+          <div><span>TCS</span><span>0.00</span></div>
+          <div><span>CGST</span><span>${money(calc.cgst)}</span></div>
+          <div><span>SGST</span><span>${money(calc.sgst)}</span></div>
+          <div><span>IGST</span><span>0.00</span></div>
+          <div class="strong"><span>Total GST</span><span>${money(calc.totalGst)}</span></div>
+          <div class="grand"><span>Total Invoice Value</span><span>&#8377; ${money(calc.grandTotal)}</span></div>
+        </div>
+        <div class="inv-footer">
+          <div class="terms">
+            <b>Terms and Conditions:</b><br>
+            This invoice doesn't attribute to the receipt of payment.<br>
+            No change in price is allowed during delivery and only on-spot returns are accepted.
+          </div>
+          <div class="signatory">
+            <div>For ${esc(seller.company || seller.word)}</div>
+            <div class="line">Authorized Signatory</div>
+          </div>
+        </div>
+        <div class="computer-gen">This is a computer generated invoice and doesn't require a signature. No tax is payable on reverse charge basis.</div>
+      </div>
+    `;
+  }
+
+  $('generateBtn').addEventListener('click', () => {
+    if (!groups.length) { return; }
+    const seller = buildSellerObj();
+    invoiceCounter = 1;
+    const toRender = []; // {qrDomId, invNumber}
+    const parts = [];
+    currentInvoices = []; // {invNumber, customer, date, sheetIndex}
+    groups.forEach((g, i) => {
+      const invNumber = g.invoiceId || nextInvoiceNumber(seller.prefix);
+      const calc = computeInvoice(g.items);
+      const qrDomId = 'qr_' + i;
+      parts.push(renderInvoiceHtml(seller, g, invNumber, calc, qrDomId));
+      toRender.push({ qrDomId, invNumber });
+      currentInvoices.push({ invNumber, customer: buyerName(g), date: fmtDate(g.date), sheetIndex: i });
+    });
+    $('invoiceOutput').innerHTML = parts.join('');
+    $('invoiceOutput').style.display = 'block';
+    $('printBtn').style.display = 'inline-flex';
+    $('downloadAllBtn').style.display = 'inline-flex';
+    $('invoiceOutput').scrollIntoView({ behavior: 'smooth' });
+
+    // Render each invoice's QR code in small batches via setTimeout so a
+    // large invoice count (hundreds+) doesn't freeze the tab: each QR draws
+    // to a real canvas, which is comparatively expensive, so we yield back
+    // to the browser between batches instead of doing all of them in one
+    // synchronous pass.
+    const BATCH_SIZE = 25;
+    let idx = 0;
+    function renderQrBatch() {
+      const end = Math.min(idx + BATCH_SIZE, toRender.length);
+      for (; idx < end; idx++) {
+        const item = toRender[idx];
+        const el = document.getElementById(item.qrDomId);
+        if (el && window.QRCode) {
+          new QRCode(el, { text: item.invNumber, width: 92, height: 92, colorDark: '#111111', colorLight: '#ffffff' });
+        } else if (el) {
+          el.textContent = item.invNumber; // fallback if the QR library failed to load
+        }
+      }
+      if (idx < toRender.length) setTimeout(renderQrBatch, 0);
+    }
+    renderQrBatch();
+  });
+
+  $('printBtn').addEventListener('click', () => window.print());
+
+  // Renders each invoice to its own PDF, downloads it locally, and uploads
+  // it to R2/S3 via the Netlify function, which also appends its link row
+  // to the Google Sheet. Uploads run with limited concurrency so a large
+  // batch doesn't open hundreds of simultaneous requests.
+  $('downloadAllBtn').addEventListener('click', async () => {
+    const sheets = Array.from(document.querySelectorAll('.invoice-sheet'));
+    if (!sheets.length || !currentInvoices.length) return;
+    const btn = $('downloadAllBtn');
+    btn.disabled = true;
+    const statusEl = $('downloadAllStatus');
+    let done = 0, failed = 0;
+
+    async function processOne(meta) {
+      const el = sheets[meta.sheetIndex];
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff' });
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgH = Math.min(pageH, pageW * canvas.height / canvas.width); // fit within A4, preserve aspect ratio
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageW, imgH);
+      const filename = `Invoice-${meta.invNumber}.pdf`;
+      pdf.save(filename); // local download, keeps today's "saved to a folder" behaviour
+
+      const base64 = pdf.output('datauristring').split(',')[1];
+      const res = await fetch('/.netlify/functions/upload-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, base64, invNumber: meta.invNumber, customer: meta.customer, date: meta.date })
+      });
+      if (!res.ok) throw new Error(await res.text());
+    }
+
+    const CONCURRENCY = 3;
+    const queue = currentInvoices.slice();
+    async function worker() {
+      while (queue.length) {
+        const meta = queue.shift();
+        try { await processOne(meta); done++; }
+        catch (e) { failed++; console.error('Upload failed for', meta.invNumber, e); }
+        statusEl.textContent = `Uploaded ${done}/${currentInvoices.length}${failed ? `, ${failed} failed` : ''}...`;
+      }
+    }
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+    statusEl.textContent = failed
+      ? `Done: ${done} uploaded, ${failed} failed — check console for details.`
+      : `Done: all ${done} invoice links added to the sheet.`;
+    statusEl.className = failed ? 'csv-status err' : 'csv-status ok';
+    btn.disabled = false;
+  });
+})();
+</script>
+</body>
+</html>
