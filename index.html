@@ -564,8 +564,21 @@
       const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const imgH = Math.min(pageH, pageW * canvas.height / canvas.width); // fit within A4, preserve aspect ratio
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageW, imgH);
+      const imgH = pageW * canvas.height / canvas.width; // true proportional height, no distortion
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      // Long invoices (many line items) are taller than one A4 page — spill
+      // onto further pages instead of squashing into one. The same full
+      // image is drawn on each page shifted up; each page's boundary
+      // naturally clips to just that page's slice.
+      let yOffset = 0;
+      pdf.addImage(imgData, 'JPEG', 0, yOffset, pageW, imgH);
+      let remaining = imgH - pageH;
+      while (remaining > 0) {
+        yOffset -= pageH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, yOffset, pageW, imgH);
+        remaining -= pageH;
+      }
       const filename = `Invoice-${meta.invNumber}.pdf`;
       pdf.save(filename); // local download, keeps today's "saved to a folder" behaviour
 
