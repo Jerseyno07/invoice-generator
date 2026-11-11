@@ -33,7 +33,7 @@ This repo is connected to Netlify directly (push to `main` → auto-deploy). `ne
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account email (must have Editor access on the target Sheet) |
 | `GOOGLE_PRIVATE_KEY` | Service account private key, `\n`-escaped |
 | `GOOGLE_SHEET_ID` | Target spreadsheet ID (from its URL) |
-| `GOOGLE_SHEET_RANGE` | Sheet/tab + starting cell to append to, e.g. `Sheet1!A1` |
+| `GOOGLE_SHEET_RANGE` | Sheet/tab + starting cell to append to (tab name followed by `!` and a cell, e.g. a tab named `Data` starting at column A would be `Data!A1`) |
 
 None of these are stored in this repo — they only live in Netlify's environment, which is also why Netlify's secrets scanner is strict about any of these values appearing literally in committed code.
 
