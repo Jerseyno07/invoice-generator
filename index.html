@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>GST Invoice Generator</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>GST Invoice Generator (v1.1)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -111,13 +114,14 @@
     #invoiceOutput { position: absolute; top: 0; left: 0; width: 100%; }
     .invoice-sheet { border: none; box-shadow: none; width: 100%; max-width: none; margin: 0; page-break-after: always; }
     .invoice-sheet:last-child { page-break-after: auto; }
+    .signatory .sign-img { display: block !important; visibility: visible !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     @page { margin: 12mm; }
   }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>GST Invoice Generator</h1>
+  <h1>GST Invoice Generator <span style="font-size:12px; font-weight:normal; opacity:0.6; vertical-align:middle;">(v1.1)</span></h1>
   <div class="sub">Upload a CSV of order lines — it's grouped into one invoice per customer and rendered in your standard tax-invoice format, each with a QR code encoding its invoice ID.</div>
 
   <!-- SELLER (editable, saved on this device) -->
