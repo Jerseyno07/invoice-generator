@@ -22,6 +22,38 @@ function getSheetsAuth() {
   return sheetsAuth;
 }
 
+// Preferred upload path: Ninjacart's own doomsday invoice API. Throws on any
+// failure so the caller can fall back to R2.
+async function uploadToNinjacart(filename, buffer, invNumber) {
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type: 'application/pdf' }), filename);
+  const url = `https://ops.ninjacart.in/asgard_ops/operations/doomsday/invoice/upload?invoiceId=${encodeURIComponent(invNumber)}&fileType=invoice`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: process.env.NINJACART_DOOMSDAY_AUTH,
+      Application: 'biFrost',
+      appVersion: '7',
+    },
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Ninjacart upload failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  const match = typeof data.message === 'string' && /File uploaded URL: (\S+)/.exec(data.message);
+  if (data.code !== 200 || !match) throw new Error(`Unexpected Ninjacart response: ${JSON.stringify(data)}`);
+  return match[1];
+}
+
+async function uploadToR2(filename, buffer) {
+  await s3.send(new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET,
+    Key: filename,
+    Body: buffer,
+    ContentType: 'application/pdf',
+  }));
+  return `${process.env.R2_PUBLIC_URL_BASE}/${filename}`;
+}
+
 async function appendToSheet(row) {
   const auth = getSheetsAuth();
   const { token } = await auth.getAccessToken();
@@ -42,14 +74,13 @@ exports.handler = async (event) => {
     if (!filename || !base64) return { statusCode: 400, body: 'filename and base64 are required' };
 
     const buffer = Buffer.from(base64, 'base64');
-    await s3.send(new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET,
-      Key: filename,
-      Body: buffer,
-      ContentType: 'application/pdf',
-    }));
-
-    const url = `${process.env.R2_PUBLIC_URL_BASE}/${filename}`;
+    let url;
+    try {
+      url = await uploadToNinjacart(filename, buffer, invNumber);
+    } catch (err) {
+      console.error('Ninjacart doomsday upload failed, falling back to R2:', err.message);
+      url = await uploadToR2(filename, buffer);
+    }
     await appendToSheet([invNumber || '', customer || '', date || '', url]);
 
     return { statusCode: 200, body: JSON.stringify({ url }) };
